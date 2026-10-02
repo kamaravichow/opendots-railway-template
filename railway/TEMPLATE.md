@@ -1,96 +1,58 @@
 # OpenDots on Railway
 
-This folder holds everything needed to publish OpenDots as a Railway template. Railway templates are composed in the dashboard (there is no template file to commit), so this guide is the exact spec to enter in the composer.
+How this Railway template is built and published. Railway templates are cloned from a working project, so the source of truth is a tested project plus the cleanup in the template editor.
 
 ## Architecture
 
-| Service    | Dockerfile                  | Public | Volume  | Healthcheck |
-| ---------- | --------------------------- | ------ | ------- | ----------- |
-| `OpenDots` | `railway/Dockerfile.app`    | yes    | `/data` | `/`         |
-| `Browser`  | `railway/Dockerfile.browser`| no     | none    | none        |
+| Service    | Dockerfile                   | Public | Volume  | Healthcheck |
+| ---------- | ---------------------------- | ------ | ------- | ----------- |
+| `OpenDots` | `railway/Dockerfile.app`     | yes    | `/data` | `/`         |
+| `Browser`  | `railway/Dockerfile.browser` | no     | none    | none        |
 
-`OpenDots` reaches `Browser` over Railway private networking. `Browser` is optional: it only powers the public-page reading tool, and its `/health` route requires the bearer secret, so Railway cannot healthcheck it.
+Service names must stay exactly `OpenDots` and `Browser`; variable references depend on them. Railway cannot select a Docker build target, so each service has its own Dockerfile, chosen with `RAILWAY_DOCKERFILE_PATH`. `Browser` has no healthcheck because its `/health` route requires the bearer secret.
 
-## Create the template
+## Build and publish
 
-1. Push this repo to your own GitHub account (Railway deploys from GitHub).
-2. Open **Workspace settings → Templates → New Template** and add two services from that GitHub repo, named exactly `OpenDots` and `Browser` (the references below depend on the names).
-3. Configure each service as below, then click **Create Template**.
-4. Deploy it once from the template URL and verify (see "Verify" below).
-5. Click **Publish** on the Templates page and fill out the form. Use the overview text from the last section.
+1. Build a project with both services from this repo, set the variables below, attach a volume at `/data` to `OpenDots`, and generate a public domain (target port `4310`) for `OpenDots` only.
+2. Deploy and verify (see "Verify").
+3. Clone it into a draft: `railway templates create --project <id> --json`.
+4. Open the returned `editorUrl` and fix the draft (next section). The clone copies the test project's variable values, so this step is mandatory.
+5. Publish: `railway templates publish <template-id> --category AI/ML --description "Deploy OpenDots, CopilotKit's personal-agent workspace, with a private browser and persistent storage" --readme-file railway/OVERVIEW.md`
 
-## `OpenDots` service
+## Template editor cleanup
 
-Settings: public HTTP networking on, healthcheck path `/`, volume mounted at `/data`.
+Replace every copied value and add a description to each variable. Railway rejects publishing while any variable lacks one.
 
-| Variable                | Value                                          | Description                                                                              |
-| ----------------------- | ---------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| `RAILWAY_DOCKERFILE_PATH` | `railway/Dockerfile.app`                     | Selects the app image (hide from users).                                                 |
-| `RAILWAY_RUN_UID`       | `0`                                            | Railway volumes are root-owned; without this the `node` user cannot write `/data`.       |
-| `PORT`                  | `4310`                                         | Port the server listens on and Railway healthchecks.                                     |
-| `OWNER_TOKEN`           | `${{secret(48)}}`                              | Password to unlock OpenDots. Find it in this service's Variables tab.                    |
-| `APP_ORIGIN`            | `https://${{RAILWAY_PUBLIC_DOMAIN}}`           | Exact public origin; required, or the app rejects requests behind Railway's TLS proxy.   |
-| `BROWSER_SECRET`        | `${{secret(48)}}`                              | Shared secret between the app and the Browser service.                                   |
-| `BROWSER_URL`           | `http://${{Browser.RAILWAY_PRIVATE_DOMAIN}}:4311` | Private-network address of the Browser service.                                       |
-| `OWNER_ID`              | `opendots-owner`                               | Stable identity that owns your conversations. Do not change after first use.             |
-| `INTELLIGENCE_API_KEY`  | _(empty, required)_                            | CopilotKit Intelligence project key, from https://cloud.copilotkit.ai.                   |
-| `OPENAI_API_KEY`        | _(empty, required)_                            | API key for the model provider.                                                          |
-| `OPENAI_MODEL`          | _(empty, required)_                            | Model identifier, for example `gpt-5`.                                                   |
-| `OPENAI_BASE_URL`       | `https://api.openai.com/v1`                    | Optional. Any OpenAI-compatible endpoint.                                                |
-| `VOICE_API_KEY`         | _(empty)_                                      | Optional. Enables realtime voice.                                                        |
-| `VOICE_MODEL`           | _(empty)_                                      | Optional. Realtime voice model.                                                          |
-| `SLACK_CHANNEL_NAME`, `SLACK_TEAM_ID`, `SLACK_USER_IDS` | _(empty)_      | Optional Slack channel. See `docs/SETUP.md#slack`.                                       |
+### `OpenDots` service
 
-Mark the three required variables as required in the composer so users are prompted at deploy time.
+| Variable                  | Template value                                      | Description                                                                                            |
+| ------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `RAILWAY_DOCKERFILE_PATH` | `railway/Dockerfile.app`                            | Selects the OpenDots app image. Do not change.                                                         |
+| `PORT`                    | `4310`                                              | Port the OpenDots server listens on and Railway checks. Do not change.                                 |
+| `OWNER_ID`                | `${{RAILWAY_PROJECT_ID}}`                           | Stable identity that owns your conversations. Unique per deployment; do not change after first use.    |
+| `OWNER_TOKEN`             | `${{secret(64)}}`                                   | Password for signing in to OpenDots. Generated for you; find it in this service's Variables tab.       |
+| `APP_ORIGIN`              | `https://${{RAILWAY_PUBLIC_DOMAIN}}`                | Exact public URL of this app. Update it if you add a custom domain.                                    |
+| `BROWSER_SECRET`          | `${{secret(64)}}`                                   | Shared secret the app uses to call the Browser service. Generated for you; do not change.             |
+| `BROWSER_URL`             | `http://${{Browser.RAILWAY_PRIVATE_DOMAIN}}:4311`   | Private-network address of the Browser service. Do not change.                                         |
+| `INTELLIGENCE_API_KEY`    | _(empty, required input)_                           | CopilotKit Intelligence project key for conversation storage. Create one at https://cloud.copilotkit.ai. |
+| `OPENAI_API_KEY`          | _(empty, required input)_                           | API key for your model provider (OpenAI or any OpenAI-compatible service).                             |
+| `OPENAI_MODEL`            | _(empty, required input)_                           | Model identifier to use, exactly as your provider names it.                                            |
+| `OPENAI_BASE_URL`         | `https://api.openai.com/v1`                         | Model API endpoint. Change it only to use another OpenAI-compatible provider.                          |
 
-## `Browser` service
+### `Browser` service
 
-Settings: no public networking, no volume.
+| Variable                  | Template value                  | Description                                                                |
+| ------------------------- | ------------------------------- | -------------------------------------------------------------------------- |
+| `RAILWAY_DOCKERFILE_PATH` | `railway/Dockerfile.browser`    | Selects the Browser service image. Do not change.                          |
+| `BROWSER_SECRET`          | `${{OpenDots.BROWSER_SECRET}}`  | Shared secret that authorizes requests from the app. Do not change.        |
 
-| Variable                  | Value                         | Description                                          |
-| ------------------------- | ----------------------------- | ---------------------------------------------------- |
-| `RAILWAY_DOCKERFILE_PATH` | `railway/Dockerfile.browser`  | Selects the browser image (hide from users).         |
-| `BROWSER_SECRET`          | `${{OpenDots.BROWSER_SECRET}}`| Same secret as the app; requests without it get 401.|
+Also in the editor: mark `INTELLIGENCE_API_KEY`, `OPENAI_API_KEY` and `OPENAI_MODEL` as required, confirm the `/data` volume, the `/` healthcheck on `OpenDots`, that `Browser` has no public domain, and add 1:1 transparent icons for the template and both services.
 
 ## Verify
 
-1. Both services deploy; `OpenDots` shows a public domain.
-2. Open the domain, enter `OWNER_TOKEN` when prompted. With the three required keys set the setup banner disappears.
-3. Check the `Browser` logs show it is listening, then ask a Dot to read a public URL.
-4. Redeploy `OpenDots` and confirm pages and settings persist (volume check).
+1. Both services deploy and `OpenDots` serves its public domain with `200`.
+2. `/api/state` returns `401` without the token and `200` with `Authorization: Bearer <OWNER_TOKEN>`.
+3. From the `OpenDots` container, a request with the browser secret to `$BROWSER_URL/browse` captures a public page. This checks private networking and Chromium's default sandbox as the non-root `node` user.
+4. Redeploy `OpenDots` and confirm it boots again against the existing volume.
 
-Known risk to confirm on first deploy: Chromium runs as the non-root `node` user with its default sandbox. If the browser tool fails with a sandbox or user-namespace error in the `Browser` logs, the Browser service needs a different runtime setup; the rest of OpenDots is unaffected.
-
-## Template overview (paste into the publish form)
-
-# Deploy and Host OpenDots with Railway
-
-OpenDots is a self-hosted personal-agent workspace from CopilotKit. It gives you Dots (specialist agents), Spaces, collaborative pages, scheduled tasks, voice, Slack channels and an isolated browser tool, backed by CopilotKit Intelligence threads.
-
-## About Hosting OpenDots
-
-This template deploys two services: the OpenDots app (Node server plus React UI, SQLite on a persistent volume) and a sandboxed Playwright browser reachable only over Railway's private network. Access secrets are generated for you. Add your CopilotKit Intelligence key and model credentials and the app is ready to use.
-
-## Common Use Cases
-
-- A private personal assistant with persistent conversations
-- Research tasks that read public web pages on a schedule
-- A document workspace where agents read and edit pages
-- A Slack-connected agent for you or a small allowlisted team
-
-## Dependencies for OpenDots Hosting
-
-- CopilotKit Intelligence (conversation persistence)
-- An OpenAI-compatible model provider
-- Playwright Chromium (bundled in the Browser service)
-
-### Deployment Dependencies
-
-- https://github.com/CopilotKit/OpenDots
-- https://cloud.copilotkit.ai
-
-### Why Deploy OpenDots on Railway?
-
-Railway is a singular platform to deploy your infrastructure stack. Railway will host your infrastructure so you don't have to deal with configuration, while allowing you to vertically and horizontally scale it.
-
-By deploying OpenDots on Railway, you are one step closer to supporting a complete full-stack application with minimal burden. Host your servers, databases, AI agents, and more on Railway.
+Test the final published template once by deploying it into a fresh project.
