@@ -6,6 +6,10 @@
 
 **An open-source template for persistent AI agents, each with its own computer. Available on Web and Mobile.**
 
+
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/yFUWQC?referralCode=vdjHUf&utm_medium=integration&utm_source=template&utm_campaign=generic)
+
+
 Built with [CopilotKit](https://github.com/CopilotKit/CopilotKit) and [AG-UI](https://docs.ag-ui.com/introduction). · [Get started](#get-started) · [Overview](#overview) · [Architecture](#architecture) · [Features](#features) · [Contributing](CONTRIBUTING.md)
 
 [![CI](https://github.com/CopilotKit/OpenDots/actions/workflows/ci.yml/badge.svg)](https://github.com/CopilotKit/OpenDots/actions/workflows/ci.yml)
