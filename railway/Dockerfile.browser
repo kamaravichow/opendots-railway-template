@@ -1,0 +1,18 @@
+# Railway build for the isolated OpenDots browser service (private network only).
+# BROWSER_HOST=:: accepts both IPv6 and IPv4 connections on Railway's private network.
+FROM node:24-bookworm-slim AS build
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY . .
+RUN npm run build
+
+FROM node:24-bookworm-slim AS browser
+ENV NODE_ENV=production BROWSER_HOST=:: BROWSER_PORT=4311 PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev && npx playwright install --with-deps chromium && chmod -R a+rX /ms-playwright
+COPY --from=build /app/dist/server ./dist/server
+USER node
+EXPOSE 4311
+CMD ["node", "dist/server/browser/index.js"]
